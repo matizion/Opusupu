@@ -1,5 +1,9 @@
 # Opusupu
-Entrega Final MBA UNCuyo 2024
+Entrega Final MBA UNCuyo 2024 
+# Simulación de Negocios
+
+# Profesor
+@ricardorpalma
 
 ## Opuestos Supuestos
 
