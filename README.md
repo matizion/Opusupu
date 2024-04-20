@@ -13,4 +13,5 @@ https://github.com/ricardorpalma
 * Darío Taboas
 * Martin Serrano
 
-Muy importante: Les pido a todos que no se *olviden* de creae la cuenta de GitHub y enviarla por Wtsp
+## Github del trabajo
+https://github.com/matizion/Opusupu
