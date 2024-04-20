@@ -1,0 +1,667 @@
+# Saaty_City_2000
+
+## Opuestos Supuestos
+### Martín Serrano
+### Javier Fornasari
+### Matías Gómez Ocampo
+### 2024-04-21
+
+Vignettes para el paquete ahpsurvey (ver 0.4.0)
+basado en el trabajo de Frankie Cho
+Departamento de Geografía, Universidad de Hong Kong, Pokfulam Road, Hong Kong
+htcho@connect.hku.hk
+
+## Introducción
+
+El Proceso Analítico de Jerarquía (AHP), introducido por Saaty (1987), es una herramienta versátil de toma de decisiones multicriterio que permite a los individuos ponderar racionalmente atributos y evaluar alternativas presentadas ante ellos. Si bien la mayoría de las aplicaciones del AHP se centran en su implementación a nivel individual o a pequeña escala, el AHP ha sido adoptado cada vez más en el diseño de encuestas, que involucran a un gran número de tomadores de decisiones y una gran cantidad de heterogeneidad en las respuestas. Las herramientas actualmente disponibles en R para el análisis de datos AHP, como los paquetes ahp de Glur (2018) y Prize de Dargahi (2016), son excelentes herramientas para realizar el AHP a pequeña escala y ofrecen una excelente interactividad, facilidad de uso y comparación de alternativas.
+
+Sin embargo, los investigadores que buscan adoptar el AHP en el análisis de datos de encuestas a menudo tienen que reformatear manualmente sus datos, a veces incluso arrastrando y copiando en hojas de cálculo de Excel, lo cual es tedioso y propenso a errores humanos. Hasta ahora, no existen buenas formas de calcular y visualizar la heterogeneidad entre los tomadores de decisiones de AHP, que es común en los datos de encuestas. Las elecciones inconsistentes también son frecuentes en el AHP realizado en formato de encuesta, donde es impráctico que los enumeradores identifiquen y corrijan las respuestas inconsistentes en el momento en que se entregan las encuestas en papel. Incluso si se utiliza una versión electrónica que permite retroalimentación inmediata del índice de consistencia, es probable que los encuestados que se les pida cambiar repetidamente sus respuestas estén mentalmente fatigados. La censura de observaciones con inconsistencia probablemente resulte en una disminución considerable del poder estadístico de la muestra, o puede llevar a muestras no representativas y sesgo de no respuesta.
+
+El paquete ahpsurvey proporciona un flujo de trabajo para que los investigadores cuantifiquen y visualicen comparaciones parciales inconsistentes que ayudan a los investigadores a mejorar el diseño del AHP y adoptar métodos analíticos apropiados para el AHP.
+
+Instale el paquete directamente desde CRAN:
+```{r}
+install.packages("ahpsurvey")
+```
+Posteriormente procedemos a cargar la librería ahpsurvey
+```{r}
+library(ahpsurvey)
+library(tidyverse)
+```
+
+## El AHP de Saaty y el conjunto de datos de ejemplo
+Una sueve introducción a la metodología de encuesta AHP:
+
+### Definición de la Escala de Valoración
+
+Rating 	 Significado
+------   --------------------------------------------------------------
+1	       Dos características son igualmente importantes
+2	       Entre 1 y 3
+3	       Las características preferidas son ligeramente más importantes
+4	       Entre 3 y 5
+5	       Las características preferidas son moderadamente más importantes
+6	       Entre 5 y 7
+7	       Las características preferidas son fuertemente más importantes
+8	       Entre 7 y 9
+9	       Las características preferidas son absolutamente más importantes
+
+Una escala de Saaty está compuesta por 9 elementos en cada extremo (17 opciones por comparación par a par), donde se les pide a los tomadores de decisiones que indiquen cuánto prefiere el atributo/característica A sobre B (o viceversa), y cuánto se prefiere en una escala de 9 puntos. Se pide a los encuestados que realicen comparaciones par a par para una variedad de atributos e indiquen sus prioridades para cada uno de ellos.
+
+Posteriormente, cargamos los datos necesarios, city200, que consisten en datos generados aleatoriamente de 200 individuos basados en los pesos proporcionados en Saaty (2004). La metodología de generación de datos se explica al final de esta viñeta.
+
+```{r}
+atts <- c("cult", "fam", "house", "jobs", "trans")
+data(city200)
+head(city200)
+```
+## Prioridades Individuales y Agregadas
+
+Creación de matrices de comparación par a par
+Basándose en la escala de Saaty, se obtiene una matriz de comparación par a par de N atributos para el _kˆth_ individuo:
+
+$$
+\begin{pmatrix}
+a_{1,1} & a_{2,1} & \cdots & a_{1,N}\\
+a_{1,2} & a_{2,2} & \cdots & a_{2,N}\\
+\vdots & \vdots & \ddots & \vdots\\
+a_{N,1} & a_{N,2} & \cdots & a_{N,N}
+\end{pmatrix}
+$$
+
+Donde _ai,j_  representa la comparación par a par entre el atributo _i_ y _j_
+
+Si i es más importante que j por 6 unidades, $a_{i,j}$=6 y $a_{j,i}$= $\frac{1}{6}$, es decir, el recíproco. Los datos deben reformatearse en este formato de matriz de comparación par a par para proceder.
+
+La reformulación de los datos de la encuesta (con una fila por individuo) en una matriz de este tipo necesaria para un análisis posterior es engorrosa para los investigadores. Además, como investigadores que realizan el AHP como parte integrada de una encuesta, típicamente recibimos datos en el formato anterior: las comparaciones par a par están codificadas en números positivos y negativos en lugar de recíprocos. En la comparación par a par de **cult_fam:**
+
+En el caso en que el tomador de decisiones elija 6, el fabricante de un código sensato lo codificaría como -6, lo que denota que la Cultura es más importante que la Familia en 6 unidades para ese **tomador de decisiones.** Para que ahp.mat funcione, el valor en la variable A_B debe ser la importancia que A tiene sobre B en valores positivos. En este caso, los valores deberían convertirse de negativos a positivos, y los valores negativos se convertirían en su recíproco en la matriz par a par. Cuando los datos están codificados de la manera anterior, establezca negconvert = TRUE. Si los datos ya están codificados en el recíproco (en lugar de negativos), establezca reciprocal = FALSE.
+
+Algunas advertencias antes de ingresar los datos en la función **ahp.mat**. ahp.mat no reconoce los nombres del dataframe original, y determina qué atributo corresponde a qué en su totalidad basándose en el orden de las columnas. Por ejemplo, cuando los atributos son A,B,C y D, el dataframe debería estar ordenado en **A_B, A_C, A_D, B_C, B_D, C_D,** y los atributos listados como c(A,B,C,D), en ese orden.
+
+```{r}
+# ahp.mat toma cuatro argumentos:
+```
+
+- df: el dataframe
+- atts: una lista de atributos en el orden correcto
+- negconvert: si convertir todos los valores positivos a negativos (lógico, el valor predeterminado es FALSE)
+- reciprocal: si convertir valores negativos (después de negconvert) en sus recíprocos (el valor predeterminado es TRUE).
+
+Veamos un ejemplo
+
+```{r}
+city200 %>%
+  ahp.mat(atts = atts, negconvert = TRUE) %>% 
+  head(3)
+```
+
+## El peso de las preferencias individuales
+
+La función **ahp.indpref** calcula las prioridades individuales de los tomadores de decisiones y devuelve un data.frame que contiene los pesos de preferencia de los tomadores de decisiones. Los tres argumentos son los siguientes:
+
+ahpmat: La lista de matrices creadas por ahp.mat.
+
+atts: una lista de atributos en el orden correcto.
+
+method: Normaliza las matrices para que todas las columnas sumen 1, y luego calcula los promedios de las filas como los pesos de preferencia de cada atributo.
+
+Cuatro modos de encontrar los promedios están disponibles:
+
+aritmético: la media aritmética
+geométrico: la media geométrica
+raízmedia: la raíz cuadrada de la suma de los valores al cuadrado
+eigen: los pesos de preferencia individuales se calculan utilizando el método de Valores Propios Dominantes descrito en Saaty (2003).
+Aquí demuestro la diferencia entre el uso de la agregación aritmética y los métodos de valor propio dominante. En mis propias pruebas con conjuntos de datos reales, una proporción mucho mayor de encuestados tienen al menos un atributo con una diferencia mayor a 0.05 debido a la presencia de respuestas inconsistentes y heterogéneas.
+
+
+```{r}
+cityahp <- city200 %>% 
+  ahp.mat(atts, negconvert = T)
+eigentrue <- ahp.indpref(cityahp, atts, method = "eigen")
+geom <- ahp.indpref(cityahp, atts, method = "arithmetic")
+
+error <- data.frame(id = 1:length(cityahp), 
+                    maxdiff = apply(abs(eigentrue - geom), 1, max))
+error %>%
+  ggplot(aes(x = id, y = maxdiff)) +
+  geom_point() +
+  geom_hline(yintercept = 0.05, linetype = "dashed", color = "red") +
+  geom_hline(yintercept = 0, color = "gray50") +
+  scale_x_continuous("Respondent ID") +
+  scale_y_continuous("Maximum difference") +
+  theme_minimal()
+```
+
+Diferencia máxima entre valor propio y agregación media
+
+## Pesos de preferencia agregados
+
+La función ahp.aggpref calcula las prioridades agregadas de todos los tomadores de decisiones utilizando los métodos especificados. Se proporcionan los siguientes argumentos:
+
+- method: Igual que ahp.indpref. Normaliza las matrices para que todas las columnas sumen 1, y luego calcula los promedios de las filas como los pesos de preferencia de cada atributo. Cuatro modos de encontrar los promedios están disponibles:
+- aritmético: la media aritmética
+- geométrico: la media geométrica
+- raízmedia: la raíz cuadrada de la suma de los valores al cuadrado
+- eigen: los pesos de preferencia individuales se calculan utilizando el método de   Valores Propios Dominantes descrito en Saaty (2003)
+- aggmethod: cómo agregar las prioridades individuales.
+- aritmético, geométrico y raízmedia (mismo principio que method) media recortada tmedia media geométrica recortada
+- sd devuelve la desviación estándar de la media aritmética.
+
+Cuando se especifica tmean o tgmean, ahpsurvey necesita un argumento adicional qt, que especifica el percentil que se recorta de los pesos de preferencia superiores e inferiores. _qt_=0.25 especifica que la agregación es la media aritmética de los valores desde el percentil 25 al 75. Esta visualización ofrece a los investigadores una buena manera de determinar la cantidad de pesos de preferencia que se recortarán. Por defecto, qt = 0, por lo tanto, el resultado que obtendrías al usar tmean y tgmean y no especificar qt es el mismo que aritmético y geométrico respectivamente.
+
+```{r}
+amean <- ahp.aggpref(cityahp, atts, method = "arithmetic")
+amean
+```
+En el comando anterior se realizan dos pasos simultáneamente:
+
+1- Calcular las prioridades individuales de cada tomador de decisiones (usando method)
+
+2- Agregar las prioridades (usando aggmethod)
+
+Por defecto, los dos pasos dependen del mismo método de agregación especificado en method (a menos que method = “eigen”, donde aggmethod predetermina a aritmético). Sin embargo, es posible especificar diferentes métodos de agregación para el nivel individual y de grupo. Por ejemplo, se puede especificar que en el nivel individual, se utiliza la media aritmética para calcular las prioridades individuales; las prioridades se agregan usando una media recortada al recortar observaciones en el percentil más alto y más bajo.
+
+```{r}
+qtresults <- matrix(nrow = 50, ncol = 5, data = NA)
+for (q in 1:50){
+  qtresults[q,] <- ahp.aggpref(cityahp, atts, method = "arithmetic", 
+                               aggmethod = "tmean", qt = (q-1)/100)
+}
+colnames(qtresults) <- atts
+qtresults %>%
+  as.data.frame() %>%
+  mutate(trimperc = 1:nrow(qtresults)-1) %>%
+  mutate(cult = cult - amean[1],
+         fam = fam - amean[2],
+         house = house - amean[3],
+         jobs = jobs - amean[4],
+         trans = trans - amean[5]) %>%
+  gather(cult, fam, house, jobs, trans, key = "att", value = "weight") %>%
+  ggplot(aes(x = trimperc, y = weight, group = att, shape = att, color = att, fill = att)) +
+  geom_line() +
+  geom_point() +
+  scale_x_continuous("Quantile (from top and bottom) trimmed") +
+  scale_y_continuous("Change from untrimmed mean") +
+  geom_hline(yintercept = 0, color = "gray") +
+  theme_minimal()
+```
+
+Cambios en los pesos agregados basados en el percentil de datos recortados
+
+También es posible cuantificar la heterogeneidad entre las prioridades de los tomadores de decisiones, información posiblemente perdida por la agregación de grupos. Esto se especifica usando aggmethod = "sd":
+```{r}
+install.packages("knitr")
+library(knitr)
+
+```
+
+```{r}
+mean <- city200 %>%
+  ahp.mat(atts = atts, negconvert = TRUE) %>% 
+  ahp.aggpref(atts, method = "arithmetic")
+
+sd <- city200 %>%
+  ahp.mat(atts = atts, negconvert = TRUE) %>% 
+  ahp.aggpref(atts, method = "arithmetic", aggmethod = "sd")
+
+t(data.frame(mean, sd))%>% kable()
+```
+
+## Medición y visualización de la consistencia
+### Medición de la consistencia
+
+Los índices de consistencia y la razón de consistencia de una elección dada se definen mediante la siguiente ecuación:
+
+\begin{equation*}
+\displaystyle (\frac{\lambda_{max}-n}{n-1}) * (\frac{1}{RI})
+\end{equation*}
+
+Donde \lambda_{max} es el valor propio máximo del vector de comparación par a par y n es el número de atributos. El RI cuando hay cinco atributos presentes es 1.11. Consulta la documentación de ahp.ri para generar tu propio RI basado en un número específico de dimensiones y semilla aleatoria.
+
+El RI a continuación se generó a partir de ahp.ri con 500000 simulaciones (lo que lleva algún tiempo), de la siguiente manera:
+
+```{r}
+weight <- c(5,-3,2,-5,
+            -7,-1,-7,
+            4,-3,
+            -7)
+sample_mat <- ahp.mat(t(weight), atts, negconvert = TRUE)
+
+(cr_std <- ahp.cr(sample_mat, atts))
+```
+
+
+La función ahp.cr devuelve un vector de CR que se puede fusionar con otros dataframes como una medida de la consistencia de los individuos.
+
+```{r}
+cr <- city200 %>%
+  ahp.mat(atts, negconvert = T) %>% 
+  ahp.cr(atts)
+table(cr <= 0.1)
+```
+
+También puedes especificar tu propio índice aleatorio generado con ahp.ri para ser utilizado con ahp.cr, de la siguiente manera:
+
+```{r}
+## Generar un índice aleatorio con 1000 simulaciones, 5 dimensiones y 30000 semillas  para reproducibilidad (semilla = 42 por defecto).
+(RI <- ahp.ri(nsims = 1000, dim = 5, seed = 30000))
+```
+```{r}
+## [1] 1.12
+## Utiliza este RI para calcular la razón de consistencia en lugar del predeterminado.
+ahp.cr(sample_mat, atts, RI)
+```
+
+El tiempo de procesamiento de ahp.ri aumenta exponencialmente a medida que aumenta nsims, y desafortunadamente no lo he diseñado para optimizar la velocidad. En general, no iría más allá de 6 dígitos de nsims a menos que tenga mucho tiempo libre.
+
+### Visualización de prioridades individuales y razones de consistencia
+La función ahp.indpref proporciona un detalle de las prioridades de cada individuo y su ponderación correspondiente. Una superposición de la densidad de violín, diagramas de caja y gráficos de dispersión es útil para visualizar la heterogeneidad en los pesos que cada encuestado otorga.
+
+```{r}
+thres <- 0.1
+dict <- c("cult" = "Culture", 
+          "fam" = "Family", 
+          "house" = "Housing", 
+          "jobs" = "Jobs", 
+          "trans" = "Transportation")
+
+cr.df <- city200 %>%
+  ahp.mat(atts, negconvert = TRUE) %>% 
+  ahp.cr(atts) %>% 
+  data.frame() %>%
+  mutate(rowid = 1:length(cr), cr.dum = as.factor(ifelse(cr <= thres, 1, 0))) %>%
+  select(cr.dum, rowid)
+
+city200 %>%
+  ahp.mat(atts = atts, negconvert = TRUE) %>% 
+  ahp.indpref(atts, method = "eigen") %>% 
+  mutate(rowid = 1:nrow(eigentrue)) %>%
+  left_join(cr.df, by = 'rowid') %>%
+  gather(cult, fam, house, jobs, trans, key = "var", value = "pref") %>%
+  ggplot(aes(x = var, y = pref)) + 
+  geom_violin(alpha = 0.6, width = 0.8, color = "transparent", fill = "gray") +
+  geom_jitter(alpha = 0.6, height = 0, width = 0.1, aes(color = cr.dum)) +
+  geom_boxplot(alpha = 0, width = 0.3, color = "#808080") +
+  scale_x_discrete("Attribute", label = dict) +
+  scale_y_continuous("Weight (dominant eigenvalue)", 
+                     labels = scales::percent, 
+                     breaks = c(seq(0,0.7,0.1))) +
+  guides(color=guide_legend(title=NULL))+
+  scale_color_discrete(breaks = c(0,1), 
+                       labels = c(paste("CR >", thres), 
+                                  paste("CR <", thres))) +
+  labs(NULL, caption = paste("n =", nrow(city200), ",", "Mean CR =",
+                           round(mean(cr),3)))+
+  theme_minimal()
+```
+
+## Tratando con datos inconsistentes y faltantes
+Identificación de comparaciones par a par inconsistentes No solo los diseñadores de encuestas están interesados en el nivel de inconsistencia presente en sus encuestas, también les interesa la fuente de la inconsistencia. ¿Los encuestados toman decisiones inconsistentes porque algunos atributos están mal definidos, o porque una comparación par a par entre esos atributos simplemente no tiene sentido? ahpsurvey proporciona herramientas fáciles para que los investigadores identifiquen las comparaciones par a par en las cuales los encuestados toman decisiones inconsistentes, lo que podría contribuir a mejores diseños de encuestas.
+
+La función _ahp.pwerror_ compara la matriz par a par de cada individuo con una Matriz de Saaty (que tiene la propiedad de CR=0) generada usando los pesos de preferencia obtenidos. Siempre es mejor entender esto con un ejemplo.
+
+La matriz de Saaty se define de la siguiente manera:
+
+
+\[
+\begin{pmatrix}
+\frac{p1}{p1} & \frac{p1}{p2} & \cdots & \frac{p1}{pN} \\
+\frac{p2}{p1} & \frac{p2}{p2} & \cdots & \frac{p2}{pN} \\
+\vdots & \vdots & \frac{pi}{pj} &    \vdots  \\
+\frac{pN}{p1} & \frac{pN}{p2} & \cdots & \frac{pN}{pN} \\
+\end{pmatrix}
+\]
+
+Donde _pi_ y _pj_ son los pesos finales de los atributos $i_{t,h}$ y $j_{t,h}$ respectivamente, y _N_ es el número de atributos.
+
+No soy experto en matemáticas y encuentro el álgebra lineal intimidante. Aquí, demostraré con un ejemplo de la matriz original de Saaty cómo llegamos a la matriz de error de consistencia a partir de la matriz par a par original.
+
+Considera esta matriz de comparación par a par original y los pesos de preferencia resultantes a continuación.
+
+```{r}
+# Datos
+data <- matrix(c(1.000, 0.200, 3.000, 0.500, 5,
+                 5.000, 1.000, 7.000, 1.000, 7,
+                 0.333, 0.143, 1.000, 0.250, 3,
+                 2.000, 1.000, 4.000, 1.000, 7,
+                 0.200, 0.143, 0.333, 0.143, 1), 
+               nrow = 5, byrow = TRUE)
+
+rownames(data) <- c("cult", "fam", "house", "jobs", "trans")
+colnames(data) <- c("cult", "fam", "house", "jobs", "trans")
+
+# Mostrar la tabla
+knitr::kable(data, caption = "Tabla de ejemplo")
+```
+
+El objetivo es comparar la matriz anterior con una matriz de Saaty perfectamente consistente generada a partir de los pesos de preferencia calculados usando el método del valor propio dominante.
+
+```{r}
+preference <- t(ahp.indpref(sample_mat, atts, method = "eigen"))
+preference
+```
+
+La matriz se genera multiplicando su versión recíproca transpuesta por sí misma. Esto no es ciencia espacial; por ejemplo, la comparación cult fam se calcula dividiendo el peso de cult por el peso de fam, 0.152 / 0.433 = 0.351.
+
+```{r}
+S <- preference %*% t((preference)^-1)
+S
+```
+
+La matriz de Saaty transpuesta se multiplica elemento por elemento con la matriz de comparación par a par original (o se toman sus recíprocos si el producto es menor que 1) para generar una medida de qué tan bien se asemeja la matriz par a par a la matriz de Saaty. Si la matriz se asemeja perfectamente a la matriz de Saaty transpuesta, la matriz de error de consistencia (mostrada a continuación) debería ser muy cercana a 1. Esta matriz se expresa de la siguiente manera:
+
+\[
+\epsilon_{i,j} = a_{i,j} \cdot \left(\frac{P_j}{P_i}\right)
+\]
+
+Donde:
+
+_aij_ es el valor en la matriz de comparación par a par. Los valores se pueden obtener con una simple multiplicación de matrices de la transpuesta de _S_
+
+```{r}
+sample_mat[[1]] * t(S)
+```
+
+El proceso está automatizado en ahp.error. Luego, ahp.error también recorre todas las matrices de comparación par a par generadas por ahp.mat, y devuelve una lista de matrices de error de consistencia. Las matrices de consistencia cuantifican la inconsistencia subyacente en cada comparación par a par de cada tomador de decisiones. También puedo usar reciprocal = TRUE para colocar todos los errores que están por encima de 1 en la matriz triangular superior. Si reciprocal = FALSE, la salida a continuación será esencialmente la misma que la matriz anterior.
+
+```{r}
+error <- ahp.error(sample_mat, atts, reciprocal = TRUE)
+error
+```
+
+Aquí demuestro cómo realizar ahp.error en nuestros 200 tomadores de decisiones simulados y calcular el error de consistencia promedio para cada comparación par a par. Al usar reciprocal = TRUE, coloco todos los errores que están por encima de 1 en la matriz triangular superior para que podamos resumir (tomando la media geométrica) rápidamente el error promedio de cada comparación par a par (mayor significa más error).
+
+```{r}
+gm_mean <- function(x, na.rm=TRUE){
+  exp(sum(log(x[x > 0]), na.rm=na.rm) / length(x))
+}
+
+mat <- cityahp %>%
+  ahp.error(atts, reciprocal = TRUE) %>%
+  unlist() %>%
+  as.numeric() %>%
+  array(dim=c(length(atts), length(atts), length(cityahp))) %>%
+  apply(c(1,2), gm_mean)
+
+colnames(mat) <- rownames(mat) <- atts
+
+mat
+```
+
+La matriz anterior es una forma rápida de revelar inconsistencias dentro de los datos, pero no es la mejor manera ya que puede estar sesgada. Si uno o más tomadores de decisiones realizan una comparación par a par increíblemente inconsistente, el error de consistencia para esa comparación será muy alto, lo que sesga el error de consistencia promedio de esa comparación par a par hacia arriba incluso si muchos otros tomadores de decisiones están tomando decisiones perfectamente consistentes.
+
+Encontrar comparaciones par a par inconsistentes por máximo
+
+Una mejor manera, como supongo, sería extraer la comparación par a par con el máximo error de inconsistencia, y devolver una lista de las comparaciones par a par más inconsistentes para cada tomador de decisiones. Este proceso está automatizado en la función ahp.pwerror, que devuelve un dataframe de las tres comparaciones par a par más inconsistentes realizadas por cada tomador de decisiones.
+
+```{r}
+city200 %>%
+  ahp.mat(atts) %>%
+  ahp.pwerror(atts) %>%
+  head()
+```
+
+Una mejor manera de visualizar la comparación par a par es con un gráfico de barras:
+
+```{r}
+cityahp %>%
+  ahp.pwerror(atts) %>% 
+  gather(top1, top2, top3, key = "max", value = "pair") %>%
+  table() %>%
+  as.data.frame() %>%
+  ggplot(aes(x = pair, y = Freq, fill = max)) + 
+  geom_bar(stat = 'identity') +
+  scale_y_continuous("Frequency", breaks = c(seq(0,180,20))) +
+  scale_fill_discrete(breaks = c("top1", "top2", "top3"), labels = c("1", "2", "3")) +
+  scale_x_discrete("Pair") +
+  guides(fill = guide_legend(title="Rank")) +
+  theme(axis.text.x = element_text(angle = 20, hjust = 1),
+        panel.background = element_rect(fill = NA),
+        panel.grid.major.y = element_line(colour = "grey80"),
+        panel.grid.major.x = element_blank(),
+        panel.ontop = FALSE)
+```
+
+La comparación par a par y su frecuencia tanto como la comparación par a par más inconsistente, la segunda más inconsistente y la tercera más inconsistente.
+
+Los resultados son favorables: la frecuencia con la que una comparación par a par es la más inconsistente para ese tomador de decisiones refleja el grado de aleatoriedad que he utilizado para generar el conjunto de datos. Las comparaciones cult_fam, cult_jobs y fam_trans se asignan las desviaciones estándar más altas para la selección aleatoria normal, lo que contribuye en parte a su alta frecuencia de ser la comparación par a par más inconsistente en el gráfico.
+
+Transformación de matrices inconsistentes Las matrices par a par inconsistentes son problemáticas para los analistas de encuestas AHP. Harker (1987) describió un método para reemplazar los valores inconsistentes: utilizando la matriz de error que hemos derivado anteriormente, podemos sugerir un valor que reduciría la inconsistencia. Considera la siguiente matriz par a par encontrada en la explicación de Saaty del método de Harker:
+```{r}
+family <- c(1,1/5,1/3,1/7,1/6,1/6,3,4,
+            5,1,3,1/5,1/3,1/3,5,7,
+            3,1/3,1,1/6,1/3,1/4,1/6,5,
+            7,5,6,1,3,4,7,8,
+            6,3,3,1/3,1,2,5,6,
+            6,3,4,1/4,1/2,1,5,6,
+            1/3,1/5,6,1/7,1/5,1/5,1,2,
+            1/4,1/7,1/5,1/8,1/6,1/6,1/2,1)
+
+fam.mat <- list(matrix(family, nrow = 8 , ncol = 8))
+
+atts <- c("size", "trans", "nbrhd", "age", "yard", "modern", "cond", "finance")
+
+rownames(fam.mat[[1]]) <- colnames(fam.mat[[1]]) <- atts
+
+fam.mat[[1]] %>% kable()
+```
+
+```{r}
+ahp.cr(fam.mat, atts)
+```
+
+La proporción de consistencia de la matriz par a par es insatisfactoria. El procedimiento involucrado en el método de Harker es el siguiente:
+
+Encuentra la comparación par a par con el máximo error (el elemento $i_{t,h}$ y $j_{t,h}$)
+
+Duplica la matriz y reemplaza la comparación par a par en la nueva matriz con el máximo error con 0, y sus dos entradas diagonales correspondientes con 2. Calcula nuevos pesos _wi_ y _wj_ (como en ahp.indpref con method = "eigen")
+
+Reemplaza la comparación par a par con $w_{i}w_{j}$ y $w_{j}w_{i}$. Para una explicación detallada, consulta a Saaty (2003). Aquí replico los resultados en Saaty (2003) con la función ahp.harker.
+```{r}
+edited <- ahp.harker(fam.mat, atts, iterations = 10, stopcr = 0.1)
+```
+```{r}
+## [1] "Ind 1 Iterations: 1"
+```
+```{r}
+## [1] "Ind 1 Iterations: 1"
+edited[[1]]%>% kable() 
+```
+```{r}
+ahp.cr(edited, atts)
+```
+
+Como se ve aquí, el elemento [3,7] es la comparación par a par más inconsistente, por lo tanto, fue reemplazado con un valor más consistente de 0.459. _ahp.harker_ toma cinco argumentos opcionales:
+
+- round es lógico e indica a ahp.harker si convertir los valores recién reemplazados a enteros y sus recíprocos, y puede establecerse en TRUE si se desea.
+
+- iterations denota cuántas comparaciones par a par deben cambiarse. Por ejemplo, si iterations = 3, ahp.harker cambia la primera, segunda y tercera comparación par a par más inconsistente usando ese método. Los investigadores deben pensar cuidadosamente cuántas comparaciones par a par deben ser reemplazadas, ya que cada vez que se reemplaza una comparación par a par, inevitablemente se pierde algo de información. Tenga en cuenta que el número máximo de iteraciones está limitado a iterations ≤ $\frac{1}{3}$∗n(n−1) con n siendo el número de atributos.
+
+- stopcr: El Ratio de Consistencia de Detención. Complementa a iterations al darle a iterations un criterio para detenerse cuando una matriz es lo suficientemente consistente. ahp.harker continuará iterando y reemplazando más elementos de las matrices de comparación par a par hasta que el ratio de consistencia de la nueva matriz sea menor que stopcr, o se alcance el número máximo de iteraciones, y se detendrá y pasará al siguiente individuo. Cuando se establece stopcr, el número de elementos reemplazados diferirá entre cada tomador de decisiones. Por lo tanto, se recomienda que el analista establezca printiter = TRUE para ver cuántas iteraciones ha sido modificada la matriz par a par de ese individuo por el algoritmo.
+
+- limit: En muchos casos, el algoritmo intentará reemplazar un valor con un número mayor que 9 o menor que 1/9. limita el valor máximo y mínimo del reemplazo a 9 y 1/9 respectivamente.
+
+printiter es un argumento lógico que indica si se informa el número de iteraciones realizadas para cada matriz par a par o no. Generalmente no es necesario si no se especifica stopcr. Cuando se especifica stopcr, esta es una buena manera de identificar cuántas comparaciones par a par son realmente reemplazadas por el algoritmo para cada tomador de decisiones. La impresión anterior muestra "Ind 1 Iterations: 1", lo que muestra que aunque especificé iterations = 10, el individuo 1 (Ind 1) solo fue iterado una vez antes de alcanzar el ratio de consistencia objetivo, 0.1. Solo se reemplazó un elemento.
+
+Demostraré cómo ahp.harker mejoró la consistencia de los tomadores de decisiones en nuestra muestra ficticia.
+```{r}
+crmat <- matrix(NA, nrow = 200, ncol = 11)
+colnames(crmat) <- 0:10
+
+atts <- c("cult", "fam", "house", "jobs", "trans")
+
+crmat[,1] <- city200 %>%
+    ahp.mat(atts, negconvert = TRUE) %>%
+    ahp.cr(atts)
+
+for (it in 1:10){
+  crmat[,it+1] <- city200 %>%
+    ahp.mat(atts, negconvert = TRUE) %>%
+    ahp.harker(atts, iterations = it, stopcr = 0.1, 
+               limit = T, round = T, printiter = F) %>%
+    ahp.cr(atts)
+}
+
+data.frame(table(crmat[,1] <= 0.1), 
+           table(crmat[,3] <= 0.1),
+           table(crmat[,5] <= 0.1)) %>% 
+  select(Var1, Freq, Freq.1, Freq.2) %>%
+  rename("Consistent?" = "Var1", "No Iteration" = "Freq",
+         "2 Iterations" = "Freq.1", "4 Iterations" = "Freq.2")
+```
+
+Si bien el uso del método de Harker no puede reducir completamente el CR de todos los tomadores de decisiones a los niveles deseados, permite a los investigadores mantener muchas más observaciones; mientras que antes tendríamos que truncar 70 muestras, ahora solo tenemos que censurar 22 muestras con 1 iteración.
+```{r}
+crmat %>% 
+  as.data.frame() %>%
+  gather(key = "iter", value = "cr", `0`, 1,2,3,4,5,6,7,8,9,10,11) %>%
+  mutate(iter = as.integer(iter)) %>%
+  ggplot(aes(x = iter, y = cr, group = iter)) +
+  geom_hline(yintercept = 0.1, color = "red", linetype = "dashed")+
+  geom_jitter(alpha = 0.2, width = 0.3, height = 0, color = "turquoise4") +
+  geom_boxplot(fill = "transparent", color = "#808080", outlier.shape = NA) + 
+  scale_x_continuous("Iterations", breaks = 0:10) +
+  scale_y_continuous("Consistency Ratio") +
+  theme_minimal()
+```
+
+número de iteraciones con el método de Harker
+```{r}
+it <- 1
+thres <- 0.1
+cr.df1 <- data.frame(cr = city200 %>%
+  ahp.mat(atts, negconvert = TRUE) %>%
+  ahp.harker(atts, iterations = it, stopcr = 0.1, limit = T, round = T, printiter = F) %>%
+  ahp.cr(atts))
+
+cr.df2 <- cr.df1 %>%
+  mutate(rowid = 1:nrow(city200), cr.dum = as.factor(ifelse(. <= thres, 1, 0))) %>%
+  select(cr.dum, rowid)
+
+city200 %>%
+  ahp.mat(atts = atts, negconvert = TRUE) %>% 
+  ahp.harker(atts, iterations = it, stopcr = 0.1, limit = T, round = T, printiter = F) %>%
+  ahp.indpref(atts, method = "eigen") %>% 
+  mutate(rowid = 1:nrow(city200)) %>%
+  left_join(cr.df2, by = 'rowid') %>%
+  gather(cult, fam, house, jobs, trans, key = "var", value = "pref") %>%
+  ggplot(aes(x = var, y = pref)) + 
+  geom_violin(alpha = 0.6, width = 0.8, color = "transparent", fill = "gray") +
+  geom_jitter(alpha = 0.3, height = 0, width = 0.1, aes(color = cr.dum)) +
+  geom_boxplot(alpha = 0, width = 0.3, color = "#808080") +
+  scale_x_discrete("Attribute", label = dict) +
+  scale_y_continuous("Weight (dominant eigenvalue)", 
+                     labels = scales::percent, breaks = c(seq(0,0.7,0.1))) +
+  guides(color=guide_legend(title=NULL))+
+  scale_color_discrete(breaks = c(0,1), 
+                       labels = c(paste("CR >", thres), 
+                                  paste("CR <", thres))) +
+  labs(NULL, caption =paste("n =",nrow(city200), ",", "Mean CR =",round(mean(cr),3)))+
+  theme_minimal()
+```
+
+### Pesos de preferencia individuales con respecto al objetivo (1 iteración)
+
+Veamos cómo la aplicación del método de Harker afecta las prioridades agregadas generales de la población.
+
+```{r}
+options(scipen = 99)
+inconsistent <- city200 %>%
+  ahp.mat(atts = atts, negconvert = TRUE) %>% 
+  ahp.aggpref(atts, method = "eigen")
+
+consistent <- city200 %>%
+  ahp.mat(atts = atts, negconvert = TRUE) %>% 
+  ahp.harker(atts, iterations = 5, stopcr = 0.1, limit = T, round = T, printiter = F) %>%
+  ahp.aggpref(atts, method = "eigen")
+
+true <- t(ahp.indpref(sample_mat, atts, method = "eigen"))
+
+aggpref.df <- data.frame(Attribute = atts, true,inconsistent,consistent) %>%
+  mutate(error.incon = abs(true - inconsistent),
+         error.con = abs(true - consistent))
+
+aggpref.df
+```
+
+Aquí presento los pesos agregados de las matrices par a par sin tratamiento y con tratamiento con el método de Harker, las prioridades agregadas derivadas de los pesos verdaderos de la muestra, así como la desviación de las prioridades respecto a los pesos verdaderos. Dado que mejorar la consistencia de la matriz no necesariamente aumenta la validez de la matriz, es imperativo que los investigadores consideren otras formas de mejorar la consistencia, idealmente pidiendo a los encuestados que reconsideren sus elecciones cada vez que surja inconsistencia.
+
+Si bien existen argumentos sólidos en contra de reemplazar valores inconsistentes sin el consentimiento del tomador de decisiones con el fin de satisfacer el criterio de ratio de consistencia CR < 0.1 (ver Saaty y Tran (2007)), a menudo no es posible para los ejecutores de encuestas volver a solicitar respuestas de sus encuestados después del análisis AHP, mientras que truncar decisiones inconsistentes puede hacer que el conjunto de datos no sea representativo de la población. Los investigadores deben pensar cuidadosamente y explicar completamente los métodos utilizados para procesar los datos de AHP.
+
+## Imputación de matrices de comparación par a par de faltantes
+Los datos faltantes son una característica común en las encuestas. El método de Harker se desarrolló originalmente para completar matrices de comparación par a par incompletas, y se puede implementar aquí utilizando la misma estrategia que ahp.harker.
+
+```{r}
+missing.df <- city200[1:10,]
+for (i in 1:10){
+  missing.df[i, round(runif(1,1,10))] <- NA
+  if (i > 7){
+    missing.df[i, round(runif(1,2,10))] <- NA
+  }
+}
+missing.df[,1:7]
+```
+
+## Conclusiones grupales del paper Saaty_City_2000
+
+La librería city200 proporciona un conjunto de datos simulados de 200 individuos con comparaciones pareadas inconsistentes, lo que permite explorar y visualizar la heterogeneidad y la inconsistencia presentes en los datos de encuestas AHP. Esto es valioso para los investigadores que buscan adoptar el AHP en el análisis de datos de encuestas a gran escala.
+
+Utilizando la librería city200, el documento demuestra cómo aplicar el método de Harker para transformar matrices de comparación pareada inconsistentes. Este método puede ayudar a los investigadores a mantener más observaciones en su conjunto de datos, en lugar de simplemente censurar todas las observaciones inconsistentes, lo que podría conducir a muestras no representativas.
+
+El paper ilustra cómo identificar las comparaciones pareadas más inconsistentes para cada tomador de decisiones utilizando la librería city200. Esta información puede ser útil para mejorar el diseño de futuras encuestas AHP, al resaltar qué comparaciones pareadas fueron particularmente difíciles o confusas para los encuestados.
+En resumen, la librería city200 proporciona un conjunto de datos realista para explorar métodos de manejo de inconsistencias y heterogeneidad en datos de encuestas AHP, lo que puede conducir a mejores prácticas en el diseño y análisis de este tipo de encuestas.
+
+## Conclusiones generales de AHP
+
+El Proceso Jerárquico Analítico introducido por Saaty (1987) es una valiosa herramienta para la toma de decisiones multicriterio. A continuación, presentamos algunos de sus pros y contras:
+
+Pros:
+
+**Estructura jerárquica:** Permite descomponer un problema complejo en partes más manejables y comprensibles, lo que facilita la toma de decisiones.
+Consideración de múltiples criterios: Permite la evaluación de alternativas teniendo en cuenta varios criterios, lo que proporciona una visión más completa y equilibrada.
+
+**Flexibilidad:** Puede adaptarse a una amplia gama de contextos y problemas, desde decisiones personales hasta procesos empresariales complejos.
+
+**Consistencia:** Proporciona un marco estructurado para abordar la consistencia en las preferencias del tomador de decisiones, lo que ayuda a minimizar los sesgos subjetivos.
+
+Contras:
+
+**Complejidad en la implementación:** La construcción de la jerarquía y la recopilación de datos pueden ser laboriosas y requerir un esfuerzo significativo.
+
+**Sensibilidad a la entrada de datos:** Los resultados del AHP pueden variar dependiendo de la precisión y fiabilidad de los datos de entrada, lo que puede introducir sesgos o incertidumbre.
+
+**Subjetividad:** La asignación de pesos y la comparación de alternativas pueden ser subjetivas y depender en gran medida de las percepciones y juicios del tomador de decisiones.
+
+**Validación empírica limitada:** Aunque se han utilizado ampliamente en diversas aplicaciones, la validación empírica del AHP en comparación con otros métodos de toma de decisiones aún puede ser limitada en ciertos contextos.
+
+El AHP ofrece un marco sólido y estructurado para abordar problemas de toma de decisiones complejos, pero su aplicación efectiva requiere un cuidadoso equilibrio entre la rigurosidad metodológica y la comprensión de las limitaciones inherentes del proceso. Es importante considerar estos pros y contras al aplicar el AHP en diferentes contextos y tomar decisiones informadas sobre su utilidad y relevancia.
+
+Por otro lado, el consenso académico sobre la aplicación del Proceso Jerárquico Analítico a la simulación de negocios es variado y depende en gran medida del contexto específico de la aplicación y las circunstancias individuales. Sin embargo, se pueden identificar algunos puntos de vista comunes:
+
+**Utilidad en la toma de decisiones complejas:** Muchos académicos reconocen que el AHP puede ser una herramienta valiosa en la simulación de negocios para abordar decisiones complejas que implican múltiples criterios y alternativas.
+
+**Limitaciones en la precisión:** Algunos estudios han señalado que el AHP puede no ser completamente preciso en la simulación de negocios debido a la subjetividad en la asignación de pesos y la sensibilidad a los datos de entrada. Esto puede limitar su capacidad para capturar completamente la complejidad de los entornos empresariales.
+
+**Necesidad de validación y sensibilidad al contexto:** Existe un consenso en que la aplicación del AHP en la simulación de negocios requiere una validación empírica cuidadosa y una consideración cuidadosa del contexto específico de la industria y la organización. Lo que funciona bien en un contexto puede no ser aplicable en otro, y es importante adaptar el método a las necesidades y características únicas de cada situación.
+
+**Complementariedad con otros enfoques:** Algunos académicos abogan por el uso del AHP en combinación con otros métodos de simulación y análisis de decisiones para mejorar la robustez y la precisión de los resultados.
+
+A modo de conclusión entendemos que el AHP puede ser una herramienta útil en la simulación de negocios pero su aplicación efectiva requiere una comprensión completa de sus fortalezas, limitaciones y condiciones de uso apropiadas. 
+El consenso académico tiende a enfatizar la importancia de la validación empírica, la sensibilidad al contexto y la complementariedad con otros enfoques metodológicos.
+
+
+### Bibliografía en la que se basa el paper
+
+- Cho, Frankie. "Analytic Hierarchy Process for Survey Data in R." Vignettes for the ahpsurvey package (ver 0.4.0), 24 de noviembre de 2019, Department of Geography, The University of Hong Kong, https://themys.sid.uncu.edu.ar/MBA/Evaluaci%c3%b3n/Evaluaciones_2024/AHP/AHP_Saaty_2000/AHP_Saaty_2000.html.
+
+### Bibliografía adicional
+
+- Aguarón, J., Escobar, M.T. y Moreno-Jiménez, J.M. (2016). The precise consistency consensus matrix in a local AHP-group decision making context. Annals of Operations Research, 245(1-2), 245-259.
+
+- Dong, Y., Xu, Y., Li, H. y Dai, M. (2008). A comparative study of the numerical scales and the prioritization methods in AHP. European Journal of Operational Research, 186(1), 229-242.
+
+- Ishizaka, A. y Labib, A. (2011). Review of the main developments in the analytic hierarchy process. Expert Systems with Applications, 38(11), 14336-14345.
+```{r}
+# la bibliografía adicional la buscamos en google schoolar citacions y los libros están disponibles en libgen
+```
