@@ -4,6 +4,7 @@ Entrega Final MBA UNCuyo 2024
 
 # Profesor
 @ricardorpalma
+https://github.com/ricardorpalma
 
 ## Opuestos Supuestos
 
