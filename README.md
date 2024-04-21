@@ -10,7 +10,6 @@ https://github.com/ricardorpalma
 
 * Matias Gomez Ocampo
 * Javier Fornasari
-* Darío Taboas
 * Martin Serrano
 
 ## Github del trabajo
